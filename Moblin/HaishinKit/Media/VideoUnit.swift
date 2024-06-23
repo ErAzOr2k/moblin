@@ -69,7 +69,6 @@ private class ReplaceVideo {
             }
             let presentationTimeStamp = replaceSampleBuffer.presentationTimeStamp.seconds
             if firstPresentationTimeStamp.isNaN {
-                // Add 0.005 to account for jitter in timestamps.
                 firstPresentationTimeStamp = realPresentationTimeStamp - presentationTimeStamp
             }
             if firstPresentationTimeStamp + presentationTimeStamp + latency > realPresentationTimeStamp {
