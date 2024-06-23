@@ -55,7 +55,7 @@ private class ReplaceVideo {
 
     func updateSampleBuffer(_ realPresentationTimeStamp: Double) {
         var sampleBuffer = currentSampleBuffer
-        // var numberOfBuffersConsumed = 0
+        var numberOfBuffersConsumed = 0
         while let replaceSampleBuffer = sampleBuffers.first {
             if currentSampleBuffer == nil {
                 sampleBuffer = replaceSampleBuffer
@@ -64,7 +64,7 @@ private class ReplaceVideo {
                 logger.info("replace-video: Over 200 frames buffered. Dropping oldest frame.")
                 sampleBuffer = replaceSampleBuffer
                 sampleBuffers.removeFirst()
-                // numberOfBuffersConsumed += 1
+                numberOfBuffersConsumed += 1
                 continue
             }
             let presentationTimeStamp = replaceSampleBuffer.presentationTimeStamp.seconds
@@ -77,13 +77,13 @@ private class ReplaceVideo {
             }
             sampleBuffer = replaceSampleBuffer
             sampleBuffers.removeFirst()
-            // numberOfBuffersConsumed += 1
+            numberOfBuffersConsumed += 1
         }
-        // if numberOfBuffersConsumed == 0 {
-        //     logger.info("replace-video: Duplicating buffer.")
-        // } else if numberOfBuffersConsumed > 1 {
-        //     logger.info("replace-video: Skipping \(numberOfBuffersConsumed - 1) buffer(s).")
-        // }
+        if numberOfBuffersConsumed == 0 {
+            logger.info("replace-video: Duplicating buffer.")
+        } else if numberOfBuffersConsumed > 1 {
+            logger.info("replace-video: Skipping \(numberOfBuffersConsumed - 1) buffer(s).")
+        }
         currentSampleBuffer = sampleBuffer
     }
 
@@ -212,11 +212,14 @@ final class VideoUnit: NSObject {
         }
     }
 
+    var replaceCounter = 0
+
     private func startFrameTimer() {
         let frameInterval = 1 / frameRate
         frameTimer = DispatchSource.makeTimerSource(queue: lockQueue)
         frameTimer!.schedule(deadline: .now() + frameInterval, repeating: frameInterval)
         frameTimer!.setEventHandler { [weak self] in
+            self?.replaceCounter += 1
             self?.handleFrameTimer()
         }
         frameTimer!.activate()
@@ -232,8 +235,15 @@ final class VideoUnit: NSObject {
         handleGapFillerTimer()
     }
 
+    var firstReplaceTimeStamp: CMTime = .zero
+
     private func handleReplaceVideo() {
-        let presentationTimeStamp = CMClockGetTime(CMClockGetHostTimeClock())
+        if firstReplaceTimeStamp == .zero {
+            firstReplaceTimeStamp = CMClockGetTime(CMClockGetHostTimeClock())
+        }
+        let presentationTimeStamp = CMTimeAdd(firstReplaceTimeStamp, CMTime(
+            value: CMTimeValue(Double(replaceCounter)),
+            timescale: CMTimeScale(frameRate)))
         for replaceVideo in replaceVideos.values {
             replaceVideo.updateSampleBuffer(presentationTimeStamp.seconds)
         }

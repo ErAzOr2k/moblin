@@ -62,6 +62,8 @@ private class ReplaceAudio {
         }
     }
 
+    var replaceCounter = 0
+
     private func startOutput() {
         logger.info("replace-audio: latency: \(latency)")
         logger.info("replace-audio: sampleRate: \(sampleRate)")
@@ -69,19 +71,24 @@ private class ReplaceAudio {
         outputTimer = DispatchSource.makeTimerSource(queue: lockQueue)
         outputTimer?.schedule(deadline: .now(), repeating: 1 / (sampleRate / frameLength))
         outputTimer?.setEventHandler { [weak self] in
+            self?.replaceCounter += 1
             self?.output()
         }
         outputTimer?.activate()
     }
 
+    var firstReplaceTimeStamp: CMTime = .zero
+
     private func output() {
-        let systemTime = CMClockGetTime(CMClockGetHostTimeClock())
-        guard let sampleBuffer = getSampleBuffer(systemTime.seconds) else {
-            // logger.info("No valid timestamp found. Waiting for more sampleBuffers.")
+        if firstReplaceTimeStamp == .zero {
+            firstReplaceTimeStamp = CMClockGetTime(CMClockGetHostTimeClock())
+        }
+        var presentationTimeStamp = CMTimeAdd(firstReplaceTimeStamp, CMTime(
+            value: CMTimeValue(Double(frameLength * Double(replaceCounter))),
+            timescale: CMTimeScale(sampleRate)))
+        guard let sampleBuffer = getSampleBuffer(presentationTimeStamp.seconds) else {
             return
         }
-        let timeOffset = CMTimeSubtract(systemTime, sampleBuffer.presentationTimeStamp)
-        let presentationTimeStamp = CMTimeAdd(sampleBuffer.presentationTimeStamp, timeOffset)
         guard let updatedSampleBuffer = sampleBuffer
             .replacePresentationTimeStamp(presentationTimeStamp: presentationTimeStamp)
         else {
@@ -102,13 +109,13 @@ private class ReplaceAudio {
 
     func getSampleBuffer(_ realPresentationTimeStamp: Double) -> CMSampleBuffer? {
         var sampleBuffer: CMSampleBuffer?
-        // var numberOfBuffersConsumed = 0
+        var numberOfBuffersConsumed = 0
         while let replaceSampleBuffer = sampleBuffers.first {
             if sampleBuffers.count > 300 {
                 logger.info("replace-audio: Over 300 buffers buffered. Dropping oldest buffer.")
                 sampleBuffer = replaceSampleBuffer
                 sampleBuffers.removeFirst()
-                // numberOfBuffersConsumed += 1
+                numberOfBuffersConsumed += 1
                 continue
             }
             let presentationTimeStamp = replaceSampleBuffer.presentationTimeStamp.seconds
@@ -121,13 +128,13 @@ private class ReplaceAudio {
             }
             sampleBuffer = replaceSampleBuffer
             sampleBuffers.removeFirst()
-            // numberOfBuffersConsumed += 1
+            numberOfBuffersConsumed += 1
         }
-        // if numberOfBuffersConsumed == 0 {
-        //     logger.info("replace-audio: Duplicating buffer.")
-        // } else if numberOfBuffersConsumed > 1 {
-        //     logger.info("replace-audio: Skipping \(numberOfBuffersConsumed - 1) buffer(s).")
-        // }
+        if numberOfBuffersConsumed == 0 {
+            logger.info("replace-audio: Duplicating buffer.")
+        } else if numberOfBuffersConsumed > 1 {
+            logger.info("replace-audio: Skipping \(numberOfBuffersConsumed - 1) buffer(s).")
+        }
         return sampleBuffer
     }
 }
