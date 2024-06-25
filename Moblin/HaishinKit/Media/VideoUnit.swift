@@ -52,7 +52,7 @@ private class ReplaceVideo {
         sampleBuffers.append(sampleBuffer)
         sampleBuffers.sort { $0.presentationTimeStamp < $1.presentationTimeStamp }
     }
-
+    
     func updateSampleBuffer(_ realPresentationTimeStamp: Double) {
         var sampleBuffer = currentSampleBuffer
         var numberOfBuffersConsumed = 0
@@ -69,7 +69,7 @@ private class ReplaceVideo {
             }
             let presentationTimeStamp = replaceSampleBuffer.presentationTimeStamp.seconds
             if firstPresentationTimeStamp.isNaN {
-                firstPresentationTimeStamp = realPresentationTimeStamp - presentationTimeStamp
+                firstPresentationTimeStamp = realPresentationTimeStamp - presentationTimeStamp + 0.01
             }
             if firstPresentationTimeStamp + presentationTimeStamp + latency > realPresentationTimeStamp {
                 break
@@ -237,25 +237,21 @@ final class VideoUnit: NSObject {
     var firstReplaceTimeStamp: CMTime = .zero
 
     private func handleReplaceVideo() {
-        if firstReplaceTimeStamp == .zero {
-            firstReplaceTimeStamp = CMClockGetTime(CMClockGetHostTimeClock())
-        }
-        let presentationTimeStamp = CMTimeAdd(firstReplaceTimeStamp, CMTime(
-            value: CMTimeValue(Double(replaceCounter)),
-            timescale: CMTimeScale(frameRate)))
+        let presentationTimeStamp = Double(replaceCounter) / frameRate
         for replaceVideo in replaceVideos.values {
-            replaceVideo.updateSampleBuffer(presentationTimeStamp.seconds)
+            replaceVideo.updateSampleBuffer(presentationTimeStamp)
         }
         guard let selectedReplaceVideoCameraId else {
             return
         }
+        let currentTime = CMClockGetTime(CMClockGetHostTimeClock())
         if let sampleBuffer = replaceVideos[selectedReplaceVideoCameraId]?
-            .getSampleBuffer(presentationTimeStamp)
+            .getSampleBuffer(currentTime)
         {
             appendSampleBuffer(sampleBuffer: sampleBuffer)
         } else if let sampleBuffer = makeBlackSampleBuffer(
             duration: .invalid,
-            presentationTimeStamp: presentationTimeStamp,
+            presentationTimeStamp: currentTime,
             decodeTimeStamp: .invalid
         ) {
             appendSampleBuffer(sampleBuffer: sampleBuffer)

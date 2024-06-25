@@ -80,17 +80,12 @@ private class ReplaceAudio {
     var firstReplaceTimeStamp: CMTime = .zero
 
     private func output() {
-        if firstReplaceTimeStamp == .zero {
-            firstReplaceTimeStamp = CMClockGetTime(CMClockGetHostTimeClock())
-        }
-        var presentationTimeStamp = CMTimeAdd(firstReplaceTimeStamp, CMTime(
-            value: CMTimeValue(Double(frameLength * Double(replaceCounter))),
-            timescale: CMTimeScale(sampleRate)))
-        guard let sampleBuffer = getSampleBuffer(presentationTimeStamp.seconds) else {
+        let presentationTimeStamp = (frameLength * Double(replaceCounter)) / sampleRate
+        guard let sampleBuffer = getSampleBuffer(presentationTimeStamp) else {
             return
         }
         guard let updatedSampleBuffer = sampleBuffer
-            .replacePresentationTimeStamp(presentationTimeStamp: presentationTimeStamp)
+            .replacePresentationTimeStamp(presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()))
         else {
             return
         }
@@ -120,7 +115,7 @@ private class ReplaceAudio {
             }
             let presentationTimeStamp = replaceSampleBuffer.presentationTimeStamp.seconds
             if firstPresentationTimeStamp.isNaN {
-                firstPresentationTimeStamp = realPresentationTimeStamp - presentationTimeStamp
+                firstPresentationTimeStamp = realPresentationTimeStamp - presentationTimeStamp + 0.01
             }
             if firstPresentationTimeStamp + presentationTimeStamp + latency > realPresentationTimeStamp {
                 break
@@ -269,7 +264,7 @@ final class AudioUnit: NSObject {
             return
         }
         // Workaround for audio drift on iPhone 15 Pro Max running iOS 17. Probably issue on more models.
-        let presentationTimeStamp = syncTimeToVideo(mixer: mixer, sampleBuffer: sampleBuffer)
+        let presentationTimeStamp = sampleBuffer.presentationTimeStamp //syncTimeToVideo(mixer: mixer, sampleBuffer: sampleBuffer)
         guard mixer.useSampleBuffer(presentationTimeStamp, mediaType: AVMediaType.audio) else {
             return
         }
