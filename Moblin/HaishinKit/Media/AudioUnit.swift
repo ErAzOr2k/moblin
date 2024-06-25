@@ -102,25 +102,25 @@ private class ReplaceAudio {
         logger.info("replace-audio: output has been stopped.")
     }
 
-    func getSampleBuffer(_ realPresentationTimeStamp: Double) -> CMSampleBuffer? {
+    func getSampleBuffer(_ outputPresentationTimeStamp: Double) -> CMSampleBuffer? {
         var sampleBuffer: CMSampleBuffer?
         var numberOfBuffersConsumed = 0
-        while let replaceSampleBuffer = sampleBuffers.first {
+        while let inputSampleBuffer = sampleBuffers.first {
             if sampleBuffers.count > 300 {
                 logger.info("replace-audio: Over 300 buffers buffered. Dropping oldest buffer.")
-                sampleBuffer = replaceSampleBuffer
+                sampleBuffer = inputSampleBuffer
                 sampleBuffers.removeFirst()
                 numberOfBuffersConsumed += 1
                 continue
             }
-            let presentationTimeStamp = replaceSampleBuffer.presentationTimeStamp.seconds
+            let presentationTimeStamp = inputSampleBuffer.presentationTimeStamp.seconds
             if firstPresentationTimeStamp.isNaN {
-                firstPresentationTimeStamp = realPresentationTimeStamp - presentationTimeStamp + 0.01
+                firstPresentationTimeStamp = outputPresentationTimeStamp - presentationTimeStamp + latency + 0.01
             }
-            if firstPresentationTimeStamp + presentationTimeStamp + latency > realPresentationTimeStamp {
+            if firstPresentationTimeStamp + presentationTimeStamp > outputPresentationTimeStamp {
                 break
             }
-            sampleBuffer = replaceSampleBuffer
+            sampleBuffer = inputSampleBuffer
             sampleBuffers.removeFirst()
             numberOfBuffersConsumed += 1
         }

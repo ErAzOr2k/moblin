@@ -41,7 +41,7 @@ private struct FaceDetectionsCompletion {
 private class ReplaceVideo {
     private var latency: Double
     private var sampleBuffers: Deque<CMSampleBuffer> = []
-    private var firstPresentationTimeStamp: Double = .nan
+    private var basePresentationTimeStamp: Double = .nan
     private var currentSampleBuffer: CMSampleBuffer?
 
     init(latency: Double) {
@@ -53,28 +53,28 @@ private class ReplaceVideo {
         sampleBuffers.sort { $0.presentationTimeStamp < $1.presentationTimeStamp }
     }
     
-    func updateSampleBuffer(_ realPresentationTimeStamp: Double) {
+    func updateSampleBuffer(_ outputPresentationTimeStamp: Double) {
         var sampleBuffer = currentSampleBuffer
         var numberOfBuffersConsumed = 0
-        while let replaceSampleBuffer = sampleBuffers.first {
+        while let inputSampleBuffer = sampleBuffers.first {
             if currentSampleBuffer == nil {
-                sampleBuffer = replaceSampleBuffer
+                sampleBuffer = inputSampleBuffer
             }
             if sampleBuffers.count > 200 {
                 logger.info("replace-video: Over 200 frames buffered. Dropping oldest frame.")
-                sampleBuffer = replaceSampleBuffer
+                sampleBuffer = inputSampleBuffer
                 sampleBuffers.removeFirst()
                 numberOfBuffersConsumed += 1
                 continue
             }
-            let presentationTimeStamp = replaceSampleBuffer.presentationTimeStamp.seconds
-            if firstPresentationTimeStamp.isNaN {
-                firstPresentationTimeStamp = realPresentationTimeStamp - presentationTimeStamp + 0.01
+            let presentationTimeStamp = inputSampleBuffer.presentationTimeStamp.seconds
+            if basePresentationTimeStamp.isNaN {
+                basePresentationTimeStamp = outputPresentationTimeStamp - presentationTimeStamp + latency + 0.01
             }
-            if firstPresentationTimeStamp + presentationTimeStamp + latency > realPresentationTimeStamp {
+            if basePresentationTimeStamp + presentationTimeStamp > outputPresentationTimeStamp {
                 break
             }
-            sampleBuffer = replaceSampleBuffer
+            sampleBuffer = inputSampleBuffer
             sampleBuffers.removeFirst()
             numberOfBuffersConsumed += 1
         }
