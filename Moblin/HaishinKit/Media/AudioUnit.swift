@@ -116,7 +116,7 @@ private class ReplaceAudio {
             if basePresentationTimeStamp.isNaN {
                 basePresentationTimeStamp = outputPresentationTimeStamp - inputPresentationTimeStamp + latency + 0.01
             }
-            if basePresentationTimeStamp + inputPresentationTimeStamp > outputPresentationTimeStamp {
+            if inputPresentationTimeStamp - (outputPresentationTimeStamp - basePresentationTimeStamp) > 0 {
                 break
             }
             sampleBuffer = inputSampleBuffer
