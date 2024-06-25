@@ -30,10 +30,11 @@ private class ReplaceAudio {
     private var sampleRate: Double = 0.0
     private var frameLength: Double = 0.0
     private var sampleBuffers: Deque<CMSampleBuffer> = []
-    private var firstPresentationTimeStamp: Double = .nan
+    private var basePresentationTimeStamp: Double = .nan
     private var outputTimer: DispatchSourceTimer?
     private var isInitialized: Bool = false
     private var isOutputting: Bool = false
+    private var latestSampleBuffer: CMSampleBuffer?
 
     weak var delegate: ReplaceAudioSampleBufferDelegate?
 
@@ -77,8 +78,6 @@ private class ReplaceAudio {
         outputTimer?.activate()
     }
 
-    var firstReplaceTimeStamp: CMTime = .zero
-
     private func output() {
         let presentationTimeStamp = (frameLength * Double(replaceCounter)) / sampleRate
         guard let sampleBuffer = getSampleBuffer(presentationTimeStamp) else {
@@ -98,7 +97,7 @@ private class ReplaceAudio {
         outputTimer?.cancel()
         outputTimer = nil
         sampleBuffers.removeAll()
-        firstPresentationTimeStamp = .nan
+        basePresentationTimeStamp = .nan
         logger.info("replace-audio: output has been stopped.")
     }
 
@@ -113,21 +112,50 @@ private class ReplaceAudio {
                 numberOfBuffersConsumed += 1
                 continue
             }
-            let presentationTimeStamp = inputSampleBuffer.presentationTimeStamp.seconds
-            if firstPresentationTimeStamp.isNaN {
-                firstPresentationTimeStamp = outputPresentationTimeStamp - presentationTimeStamp + latency + 0.01
+            let inputPresentationTimeStamp = inputSampleBuffer.presentationTimeStamp.seconds
+            if basePresentationTimeStamp.isNaN {
+                basePresentationTimeStamp = outputPresentationTimeStamp - inputPresentationTimeStamp + latency + 0.01
             }
-            if firstPresentationTimeStamp + presentationTimeStamp > outputPresentationTimeStamp {
+            if basePresentationTimeStamp + inputPresentationTimeStamp > outputPresentationTimeStamp {
                 break
             }
             sampleBuffer = inputSampleBuffer
             sampleBuffers.removeFirst()
             numberOfBuffersConsumed += 1
         }
-        if numberOfBuffersConsumed == 0 {
-            logger.info("replace-audio: Duplicating buffer.")
-        } else if numberOfBuffersConsumed > 1 {
-            logger.info("replace-audio: Skipping \(numberOfBuffersConsumed - 1) buffer(s).")
+        if logger.debugEnabled {
+            if numberOfBuffersConsumed == 0 {
+                logger.debug("""
+                replace-audio: Duplicating buffer. \
+                Output time \(outputPresentationTimeStamp) \
+                Current \(sampleBuffer?.presentationTimeStamp.seconds ?? .nan). \
+                Buffers count is \(sampleBuffers.count). \
+                First \(sampleBuffers.first?.presentationTimeStamp.seconds ?? .nan). \
+                Last \(sampleBuffers.last?.presentationTimeStamp.seconds ?? .nan).
+                """)
+            } else if numberOfBuffersConsumed > 1 {
+                logger.debug("""
+                replace-audio: Skipping \(numberOfBuffersConsumed - 1) buffer(s). \
+                Output time \(outputPresentationTimeStamp) \
+                Current \(sampleBuffer?.presentationTimeStamp.seconds ?? .nan). \
+                Buffers count is \(sampleBuffers.count). \
+                First \(sampleBuffers.first?.presentationTimeStamp.seconds ?? .nan). \
+                Last \(sampleBuffers.last?.presentationTimeStamp.seconds ?? .nan).
+                """)
+            }
+        }
+        if sampleBuffer != nil {
+            latestSampleBuffer = sampleBuffer
+        } else if latestSampleBuffer != nil {
+            sampleBuffer = latestSampleBuffer
+            logger.debug("""
+            replace-audio: Using latest sample buffer. \
+            Output time \(outputPresentationTimeStamp) \
+            Current \(sampleBuffer?.presentationTimeStamp.seconds ?? .nan). \
+            Buffers count is \(sampleBuffers.count). \
+            First \(sampleBuffers.first?.presentationTimeStamp.seconds ?? .nan). \
+            Last \(sampleBuffers.last?.presentationTimeStamp.seconds ?? .nan).
+            """)
         }
         return sampleBuffer
     }

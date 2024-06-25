@@ -54,36 +54,50 @@ private class ReplaceVideo {
     }
     
     func updateSampleBuffer(_ outputPresentationTimeStamp: Double) {
-        var sampleBuffer = currentSampleBuffer
         var numberOfBuffersConsumed = 0
         while let inputSampleBuffer = sampleBuffers.first {
             if currentSampleBuffer == nil {
-                sampleBuffer = inputSampleBuffer
+                currentSampleBuffer = inputSampleBuffer
             }
             if sampleBuffers.count > 200 {
                 logger.info("replace-video: Over 200 frames buffered. Dropping oldest frame.")
-                sampleBuffer = inputSampleBuffer
+                currentSampleBuffer = inputSampleBuffer
                 sampleBuffers.removeFirst()
                 numberOfBuffersConsumed += 1
                 continue
             }
-            let presentationTimeStamp = inputSampleBuffer.presentationTimeStamp.seconds
+            let inputPresentationTimeStamp = inputSampleBuffer.presentationTimeStamp.seconds
             if basePresentationTimeStamp.isNaN {
-                basePresentationTimeStamp = outputPresentationTimeStamp - presentationTimeStamp + latency + 0.01
+                basePresentationTimeStamp = outputPresentationTimeStamp - inputPresentationTimeStamp + latency + 0.01
             }
-            if basePresentationTimeStamp + presentationTimeStamp > outputPresentationTimeStamp {
+            if basePresentationTimeStamp + inputPresentationTimeStamp > outputPresentationTimeStamp {
                 break
             }
-            sampleBuffer = inputSampleBuffer
+            currentSampleBuffer = inputSampleBuffer
             sampleBuffers.removeFirst()
             numberOfBuffersConsumed += 1
         }
-        if numberOfBuffersConsumed == 0 {
-            logger.info("replace-video: Duplicating buffer.")
-        } else if numberOfBuffersConsumed > 1 {
-            logger.info("replace-video: Skipping \(numberOfBuffersConsumed - 1) buffer(s).")
+        if logger.debugEnabled {
+            if numberOfBuffersConsumed == 0 {
+                logger.debug("""
+                replace-video: Duplicating buffer. \
+                Output time \(outputPresentationTimeStamp) \
+                Current \(currentSampleBuffer?.presentationTimeStamp.seconds ?? .nan). \
+                Buffers count is \(sampleBuffers.count). \
+                First \(sampleBuffers.first?.presentationTimeStamp.seconds ?? .nan). \
+                Last \(sampleBuffers.last?.presentationTimeStamp.seconds ?? .nan).
+                """)
+            } else if numberOfBuffersConsumed > 1 {
+                logger.debug("""
+                replace-video: Skipping \(numberOfBuffersConsumed - 1) buffer(s). \
+                Output time \(outputPresentationTimeStamp) \
+                Current \(currentSampleBuffer?.presentationTimeStamp.seconds ?? .nan). \
+                Buffers count is \(sampleBuffers.count). \
+                First \(sampleBuffers.first?.presentationTimeStamp.seconds ?? .nan). \
+                Last \(sampleBuffers.last?.presentationTimeStamp.seconds ?? .nan).
+                """)
+            }
         }
-        currentSampleBuffer = sampleBuffer
     }
 
     func getSampleBuffer(_ presentationTimeStamp: CMTime) -> CMSampleBuffer? {
